@@ -4,15 +4,20 @@ library(jsonlite)
 library(tm)
 library(nnet)
 library(ggplot2)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(party)
 
 test_url <- "https://www.kaggle.com/c/whats-cooking/download/test.json.zip"
 train_url <- "https://www.kaggle.com/c/whats-cooking/download/train.json.zip"
 
 if (!file.exists("test.json.zip")) {
-  download.file(test_url, "test.json.zip")
+  #download.file(test_url, "test.json.zip")
 }
 if (!file.exists("train.json.zip")) {
-  download.file(train_url, "train.json.zip")
+  #download.file(train_url, "train.json.zip")
 }
 
 unzip("train.json.zip")
@@ -26,27 +31,67 @@ test <- fromJSON('test.json')
 text_source <- VectorSource(c(train$ingredients, test$ingredients))
 corpus <- Corpus(text_source)
 
+# Apply some transformations
+corpus <- tm_map(corpus, stemDocument)
+corpus <- tm_map(corpus, removeWords, stopwords("english"))
+corpus <- tm_map(corpus, removeWords, c("green", "black"))
+corpus <- tm_map(corpus, removePunctuation)
+
 dtm <- DocumentTermMatrix(corpus)
+
 dtm_sparse <- removeSparseTerms(dtm, 0.9)
+
 train_ingredients <- as.data.frame(as.matrix(dtm_sparse)[1:nrow(train),])
 
-test_ingredients <- as.data.frame(as.matrix(dtm_sparse)[(nrow(train)+1):dtm$nrow,])
+#test_ingredients <- as.data.frame(as.matrix(dtm_sparse)[(nrow(train)+1):dtm$nrow,])
 
 train_ingredients$cuisine <- as.factor(train$cuisine)
 
-mod <- multinom(cuisine ~ ., data = train_ingredients)
+train_df <- tbl_df(train_ingredients)
 
-pred<-predict(mod,test_ingredients,"probs")
+# Divide trainning set into training and validation set
+training_df <- slice(train_df, 1:floor(1+nrow(train_df)*0.8))
+validate_df <- slice(train_df, floor(1+nrow(train_df)*0.8):nrow(train_df))
 
-cuisine <- as.factor(train$cuisine)
+#mod <- multinom(cuisine ~ ., data = training_df)
+#pred<-predict(mod,test_ingredients,"probs")
 
-indices<-apply(pred, 1, which.max)
-hist(indices)
+#pred<-predict(mod,select(validate_df, -cuisine),"probs")
 
-submission<-data.frame(test$id)
-submission$cuisine <- as.vector(cuisine[indices])
 
-names(submission) <-c('id', 'cuisine')
-write.csv(submission, "submission.csv", row.names=FALSE)
+#cuisine <- as.factor(train$cuisine)
+
+#indices<-apply(pred, 1, which.max)
+#hist(indices)
+
+#compare<-data.frame(as.vector(cuisine[indices]))
+#compare$true <- validate_df$cuisine
+#names(compare) <-c('test', 'true')
+#levels(compare$test)<-levels(validate_df$cuisine)
+#nnCM <- confusionMatrix(compare$test, compare$true)
+#nnCM
+#compare<-mutate(compare, match = (test == true))
+
+#score<-sum(compare$match)/nrow(compare)
+#score
+
+set.seed(9347)
+cartModelFit <- rpart(cuisine ~ ., data = training_df, method = "class")
+prp(cartModelFit)
+cartPredict <- predict(cartModelFit, newdata = select(validate_df, -cuisine), type = "class")
+cartCM <- confusionMatrix(cartPredict, validate_df$cuisine)
+cartCM
+
+rfModel <- randomForest(cuisine ~ ., data = training_df, ntree=2000, type =classification)
+rfPredict <- predict(rfModel, newdata = select(validate_df, -cuisine), type = "class")
+rfCM <- confusionMatrix(rfPredict, validate_df$cuisine)
+rfCM
+
+#submission<-data.frame(test$id)
+#submission$cuisine <- as.vector(cuisine[indices])
+
+#names(submission) <-c('id', 'cuisine')
+
+#write.csv(submission, "submission.csv", row.names=FALSE)
 
 
