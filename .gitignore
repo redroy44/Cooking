@@ -2,6 +2,7 @@
 .Rhistory
 .Rapp.history
 .RData
+.RDataTmp
 
 # Example code in package build process
 *-Ex.R
@@ -18,3 +19,6 @@ vignettes/*.pdf
 _MACOSX/
 *.json
 *.zip
+
+# Submission files
+*.csv
